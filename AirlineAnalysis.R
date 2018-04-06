@@ -28,11 +28,61 @@ air.spark %>%
   summarise(n = n())
 
 # Calculate mean delay time by airline
-air.spark %>%
-  select(UNIQUE_CARRIER, DEP_DELAY_NEW) %>%
-  group_by(UNIQUE_CARRIER) %>%
-  summarise("Mean Delay Time" = mean(DEP_DELAY_NEW, na.rm = TRUE))
+delay <-  air.spark %>%
+      select(UNIQUE_CARRIER, DEP_DELAY_NEW) %>%
+      group_by(UNIQUE_CARRIER) %>%
+      summarise(MeanDelayTime = mean(DEP_DELAY_NEW, na.rm = TRUE)) %>%
+      collect()
+
+delay$UNIQUE_CARRIER <- factor(delay$UNIQUE_CARRIER)
+
+# Create a visualization of delays
+ggplot(delay, aes(x = UNIQUE_CARRIER, y = MeanDelayTime, fill = "#4286f4")) +
+  geom_col()
 
 
+# Delays grouped by UNIQUE_CARRIER and DAY_OF_WEEK
+delay.by.day.carrier <- air.spark %>% 
+  select(UNIQUE_CARRIER, DEP_DELAY_NEW, DAY_OF_WEEK) %>%
+  group_by(UNIQUE_CARRIER, DAY_OF_WEEK) %>%
+  summarise(MeanDelayTime = mean(DEP_DELAY_NEW, na.rm = TRUE)) %>%
+  collect()
+
+# Create a faceted visualization looking at the mean delay time for each day 
+# by carriers
+ggplot(delay.by.day.carrier, aes(x = DAY_OF_WEEK, y = MeanDelayTime, fill = DAY_OF_WEEK)) +
+  geom_col() +
+  facet_wrap(~UNIQUE_CARRIER)
+
+# Mean delay time by ORIGIN airport
+delay.origin <- air.spark %>%
+  select(ORIGIN, DEP_DELAY_NEW) %>% 
+  group_by(ORIGIN) %>%
+  summarise(MeanDelayTime = mean(DEP_DELAY_NEW, na.rm = TRUE)) %>%
+  arrange(desc(MeanDelayTime)) %>%
+  top_n(10) %>%
+  collect()
+
+# visualization for above aggregation
+ggplot(delay.origin, aes(x = ORIGIN, y = MeanDelayTime)) + 
+  geom_col()
+
+# The next thing I want to look at is the mean delay time by the origin-destination
+# airport pair. To do this, I'll have to mutate the data.frame and create a column
+# which is the ORIGIN-DEST airport combination. 
+air.spark <- air.spark %>%
+  mutate("ORIGIN_DEST" = paste(ORIGIN, DEST, sep = "-"))
+
+# Now I'll aggregate the data in a similar manner as above
+delay.pair <- air.spark %>%
+  select(ORIGIN_DEST, DEP_DELAY_NEW) %>%
+  group_by(ORIGIN_DEST) %>%
+  summarise(MeanDelayTime = mean(DEP_DELAY_NEW, na.rm = TRUE)) %>%
+  arrange(desc(MeanDelayTime)) %>%
+  collect()
+
+# glimpse the tibble
+glimpse(delay.pair)
+head(delay.pair, n = 10)
 
 
