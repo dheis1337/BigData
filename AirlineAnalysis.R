@@ -11,7 +11,7 @@ air <- fread("~/MyStuff/DataScience/airOT201201.csv")
 sc <- spark_connect(master = "local")
 
 # Copy data to spark
-air.spark <- copy_to(sc, air)
+air.spark <- copy_to(sc, air, "air")
 
 # List data frame just copied
 src_tbls(sc)
@@ -74,7 +74,7 @@ air.spark <- air.spark %>%
   mutate("ORIGIN_DEST" = paste(ORIGIN, DEST, sep = "-"))
 
 # Now I'll aggregate the data in a similar manner as above
-delay.pair <- air.spark %>%
+delay.mean.pair <- air.spark %>%
   select(ORIGIN_DEST, DEP_DELAY_NEW) %>%
   group_by(ORIGIN_DEST) %>%
   summarise(MeanDelayTime = mean(DEP_DELAY_NEW, na.rm = TRUE)) %>%
@@ -84,5 +84,51 @@ delay.pair <- air.spark %>%
 # glimpse the tibble
 glimpse(delay.pair)
 head(delay.pair, n = 10)
+
+delay.pair.summary <- air.spark %>%
+  select(ORIGIN_DEST, DEP_DELAY_NEW) %>%
+  group_by(ORIGIN_DEST) %>%
+  summarise(min(DEP_DELAY_NEW, na.rm = TRUE), 
+            #approxQuantile(DEP_DELAY_NEW, probs = .25, na.rm = TRUE),
+            MeanDelayTime = mean(DEP_DELAY_NEW, na.rm = TRUE),
+            #median(DEP_DELAY_NEW, na.rm = TRUE),
+            #quantile(DEP_DELAY_NEW, probs = .75, na.rm = TRUE),
+            max(DEP_DELAY_NEW, na.rm = TRUE)) %>%
+  arrange(desc(MeanDelayTime)) %>%
+  collect()
+
+
+# Now let's just gather the DEP_DELAY_NEW column by ORIGIN-DEST
+delay.pair <- air.spark %>%
+  select(ORIGIN, DEP_DELAY_NEW) %>%
+  group_by(ORIGIN_DEST) %>%
+  collect()
+
+delay.pair <- as.data.table(delay.pair)
+delay.pair <- delay.pair[sample(nrow(delay.pair), 10000)]
+delay.pair[, ORIGIN := factor(ORIGIN)]
+delay.pair <- delay.pair[ORIGIN %in% c("ATL", "LAX", "ORD", "DFW", "JFK", "DEN", "SFO", "LAS", 
+                         "CLT", "SEA")]
+
+delay.pair.stats <- delay.pair[, mean(DEP_DELAY_NEW, na.rm = TRUE), by = ORIGIN]
+delay.median <- delay.pair[, median(DEP_DELAY_NEW, na.rm = TRUE), by = ORIGIN][, V1]
+delay.sd <- delay.pair[, sd(DEP_DELAY_NEW, na.rm = TRUE), by = ORIGIN][, V1]
+delay.se <- delay.sd / delay.pair[, .N, by = ORIGIN][, N]
+
+
+delay.pair.stats <- cbind(delay.pair.stats, delay.pair[, sd(DEP_DELAY_NEW, na.rm = TRUE), by = ORIGIN][, 2])
+
+
+names(delay.pair.stats) <- c("ORIGIN", "MEAN", "MEDIAN", "SD")
+
+
+# visualize the DEP_DELAY_NEW by ORIGIN pair
+ggplot(delay.pair, aes(x = DEP_DELAY_NEW, y = ORIGIN)) +
+  geom_point(position = "jitter", color = "#3769dd", alpha = .5) +
+  geom_point(data = delay.pair.stats, aes(x = MEAN)) +
+  xlim(0, 50)
+
+
+
 
 
