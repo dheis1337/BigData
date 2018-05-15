@@ -86,6 +86,16 @@ flights_per_state <- air.spark %>%
 
 flights_per_state <- as.data.table(flights_per_state)
 
+# Count of flights that have some kind of delay
+flights_with_delays <- air.spark %>% 
+                          filter(DEP_DELAY_NEW > 1) %>%
+                          collect()
+
+
+
+
+flights_with_delays <- as.data.table(flights_with_delays)
+
 # Calculate mean delay time by airline
 delay <-  air.spark %>%
       select(UNIQUE_CARRIER, DEP_DELAY_NEW) %>%
@@ -310,6 +320,49 @@ ggplot(dep_delay_per_dep_time, aes(x = DEP_DELAY, color = DEP_TIME_BIN)) +
   scale_x_continuous(limits = c(1, 60))
 
 dep_delay_per_dep_time[, .N, by = DEP_TIME_BIN]
+
+
+# Density plots using the flights_with_delays
+# DEP_DELAY_NEW by MONTH
+ggplot(flights_with_delays[MONTH %in% unique(MONTH)[1:6]], aes(x = DEP_DELAY_NEW, color = factor(MONTH))) +
+  geom_density() +
+  scale_x_continuous(limits = c(1, 60))
+
+
+ggplot(flights_with_delays[MONTH %in% unique(MONTH)[7:12]], aes(x = DEP_DELAY_NEW, color = factor(MONTH))) +
+  geom_density() +
+  scale_x_continuous(limits = c(1, 60))
+
+
+# DEP_DELAY_NEW by DAY_OF_WEEK
+ggplot(flights_with_delays, aes(x = DEP_DELAY_NEW, color = factor(DAY_OF_WEEK))) +
+  geom_density() +
+  scale_x_continuous(limits = c(1, 60))
+
+flights_with_delays %>% filter(LATE_AIRCRAFT_DELAY > 1) %>% 
+  summarise("mean_delay_time" = mean(DEP_DELAY_NEW, na.rm = TRUE),
+            "mean_late_aircraft" = mean(LATE_AIRCRAFT_DELAY))
+
+########### Let's do some time-series plots ###################################
+mean_delays_year <- air.spark %>%
+          group_by(YEAR) %>%
+          collect()
+
+mean_delays_year <- mean_delays_year %>% summarise("mean_dep_delay" = mean(DEP_DELAY, na.rm = TRUE),
+                                   "mean_dep_delay_new" = mean(DEP_DELAY_NEW, na.rm = TRUE),
+                                   "mean_arr_delay_new" = mean(ARR_DELAY_NEW, na.rm = TRUE),
+                                   "mean_arr_delay" = mean(ARR_DELAY, na.rm = TRUE)) 
+
+
+mean_delays_year <- as.data.table(mean_delays_year)
+
+# mean_dep_delay and arr_delay by YEAR
+ggplot(mean_delays_temporal, aes(x = YEAR)) +
+  geom_line(aes(y = mean_dep_delay), color = "red") +
+  geom_line(aes(y = mean_arr_delay)) +
+  geom_line(aes(y = mean_arr_delay_new), color = "blue") +
+  geom_line(aes(y = mean_dep_delay_new), color = "pink")
+
 
 
 
