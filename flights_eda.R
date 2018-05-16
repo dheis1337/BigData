@@ -3,12 +3,24 @@ library(dplyr)
 library(ggplot2)
 library(data.table)
 library(DBI)
+library(lessR)
 
 # Load data into workspace
 air <- fread("~/MyStuff/DataScience/BigData/data/AirOnTimeCSV/flightssamp.csv")
 
+# Before copying this to the cluster, I need to change the num variabeles to 
+int_cols <- which(sapply(air, is.integer))
+num_cols <- which(sapply(air, is.numeric))
 
-# Create a spark connection locally
+# These are the columns that are numeric but not yet integer
+change_cols <- y[!(y %in% x)]
+change_cols <- names(cols)
+
+# convert the numeric columns to integer
+air[, (cols) := lapply(.SD, as.integer), .SDcols = cols]
+
+
+ # Create a spark connection locally
 sc <- spark_connect(master = "local")
 
 # Copy data to spark
@@ -364,5 +376,23 @@ ggplot(mean_delays_temporal, aes(x = YEAR)) +
   geom_line(aes(y = mean_dep_delay_new), color = "pink")
 
 
+# Find correlations of numeric variables and response
+corr_mat <- ml_corr(air.spark, c("YEAR", "MONTH", "DAY_OF_MONTH", "DAY_OF_WEEK",
+                     "DEP_DELAY", "DEP_DELAY_NEW", "DEP_DEL15", 
+                     "ARR_DELAY", "ARR_DELAY_NEW", "ARR_DEL15", 
+                     "CRS_ELAPSED_TIME", "ACTUAL_ELAPSED_TIME", 
+                     "DISTANCE"), method = "pearson")
 
+num_data <- air.spark %>% 
+  select(YEAR, MONTH, DAY_OF_MONTH, DAY_OF_WEEK, DEP_DELAY, DEP_DELAY_NEW, DEP_DEL15,
+         ARR_DELAY, ARR_DELAY_NEW, ARR_DEL15, CRS_ELAPSED_TIME, ACTUAL_ELAPSED_TIME, 
+         DISTANCE) %>%
+  na.omit() 
+
+
+x <- sapply(-cor_mat, order)
+
+
+cor_mat <- as.matrix(cor_mat)
+corReorder(cor_mat)
 
