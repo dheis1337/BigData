@@ -35,10 +35,16 @@ results <- dbGetQuery(sc, "SELECT UNIQUE_CARRIER, COUNT(UNIQUE_CARRIER)
                            GROUP BY UNIQUE_CARRIER")
 
 # Count number of flights by airline in dataset using dplyr
-air.spark %>%
+flights_by_carrier <- air.spark %>%
   select(UNIQUE_CARRIER) %>%
   group_by(UNIQUE_CARRIER) %>%
-  summarise(n = n())
+  summarise(n = n()) %>%
+  collect()
+
+flights_by_carrier <- as.data.table(flights_by_carrier)
+
+flights_by_carrier[order(-n)]
+flights_by_carrier[1:5, sum(n)] 
 
 # Count the number of flights by year 
 air.spark %>%
@@ -65,6 +71,8 @@ flights_day_per_month <- air.spark %>%
                             summarise(n = n()) %>%
                             collect()
 
+as.data.table(flights_day_per_month)
+
 # Count number of flights per origin airport
 flights_per_origin <- air.spark %>%
                         select(ORIGIN) %>%
@@ -73,6 +81,7 @@ flights_per_origin <- air.spark %>%
                         collect()
 
 flights_per_origin <- as.data.table(flights_per_origin)
+flights_per_origin[order(-n)][1:50]
 
 # Mean and median number of flights per origin
 flights_per_origin[, .(mean(n), median(n))]
@@ -100,13 +109,44 @@ flights_per_state <- as.data.table(flights_per_state)
 
 # Count of flights that have some kind of delay
 flights_with_delays <- air.spark %>% 
-                          filter(DEP_DELAY_NEW > 1) %>%
+                          filter(DEP_DELAY >= 1) %>%
                           collect()
 
 
 
-
 flights_with_delays <- as.data.table(flights_with_delays)
+
+# Count of flights that aren't delayed at all
+flights_without_delays <- air.spark %>% 
+  filter(DEP_DELAY == 0) %>%
+  collect()
+
+# Count of flights that depart early
+flights_early <- air.spark %>%
+  filter(DEP_DELAY < 0) %>%
+  collect()
+
+flights_early <- as.data.table(flights_early)
+
+# Count number of flights that have an ARR_DELAY and a DEP_DELAY
+dep_arr_delay <- air.spark %>%
+  filter(DEP_DELAY > 0 & ARR_DELAY > 0) %>%
+  collect()
+
+dep_arr_delay <- as.data.table(dep_arr_delay)
+
+# Proportion of flights with DEP_DELAY that also had ARR_DELAY
+nrow(dep_arr_delay) / nrow(flights_with_delays)
+
+# Flights with arr_delay
+flights_with_arr_delay <- air.spark %>%
+  filter(ARR_DELAY > 0) %>%
+  collect()
+
+flights_with_arr_delay <- as.data.table(flights_with_arr_delay)
+
+# Proportion of flights with ARR_DELAY that also had DEP_DELAY
+nrow(dep_arr_delay) / nrow(flights_with_arr_delay)
 
 # Calculate mean delay time by airline
 delay <-  air.spark %>%
@@ -212,7 +252,9 @@ ggplot(delay.pair, aes(x = DEP_DELAY_NEW, y = ORIGIN)) +
 
 # Look at DISTANCE vs ARR_DELAY
 ggplot(air, aes(x = ARR_DELAY, y = DISTANCE)) +
-  geom_point(alpha = .1)
+  geom_point(alpha = .01) +
+  scale_x_continuous(limits = c(-10, 100))
+
 
 # Look at DISTANCE vs DEP_DELAY
 ggplot(air, aes(x = DEP_DELAY, y = DISTANCE)) +
@@ -252,6 +294,10 @@ ggplot(air, aes(x = DEP_DELAY, y = MONTH)) +
 ggplot(air, aes(x = DEP_DELAY, y = ARR_DELAY)) +
   geom_point(alpha = .05)
 
+# jittered scatter plot of ARR_DELAY by DISTANCE GROUP
+ggplot(air, aes(x = ARR_DELAY, y = DISTANCE_GROUP)) +
+  geom_point(position = "jitter", alpha = .1)
+
 ################## Let's look at some density plots ############################
 # DEP_DELAY
 ggplot(air, aes(x = DEP_DELAY)) +
@@ -260,7 +306,9 @@ ggplot(air, aes(x = DEP_DELAY)) +
 # DEP_DELAY with limited axis -10 to 120
 ggplot(air, aes(x = DEP_DELAY)) +
   geom_density() +
-  scale_x_continuous(limits = c(-10, 120))
+  scale_x_continuous(limits = c(-10, 120)) +
+  geom_vline(xintercept = mean(air$DEP_DELAY, na.rm = TRUE)) +
+  geom_vline(xintercept = median(air$DEP_DELAY, na.rm = TRUE))
 
 
 # DEP_DELAY with limited axis -10 to 60
@@ -305,8 +353,13 @@ ggplot(air, aes(x = DISTANCE)) +
 
 # CRS_DEP_TIME
 ggplot(air, aes(x = as.numeric(CRS_DEP_TIME))) +
-  geom_density()
+  geom_density() +
+  geom_vline(xintercept = mean(as.numeric(air$CRS_DEP_TIME), na.rm = TRUE)) +
+  geom_vline(xintercept = median(as.numeric(air$CRS_DEP_TIME), na.rm = TRUE), color = "red")
 
+# CRS_ELAPSED_TIME 
+ggplot(air, aes(x = CRS_ELAPSED_TIME)) +
+  geom_density()
 
 # CRS_DEP_TIME from 700 to 1700
 ggplot(air, aes(x = as.numeric(CRS_DEP_TIME))) +
@@ -323,15 +376,28 @@ dep_delay_per_dep_time <- as.data.table(dep_delay_per_dep_time)
 
 # Now I want to create a column which has a binned version of the CRS_DEP_TIME
 dep_delay_per_dep_time[, DEP_TIME_BIN := ifelse(CRS_DEP_TIME < 1200,  "morning",
-                                                ifelse(CRS_DEP_TIME >= 1200 & CRS_DEP_TIME < 1700,
+                                                ifelse(CRS_DEP_TIME >= 1200 & CRS_DEP_TIME < 1700, 
                                                        "afternoon", "night"))]
+
+# Proportion of flights that have departure delays based on DEP_TIME_BIN
+dep_delay_per_dep_time[DEP_DELAY > 0 & DEP_TIME_BIN == "night", .N] / dep_delay_per_dep_time[DEP_TIME_BIN == "morning", .N] 
+dep_delay_per_dep_time[DEP_DELAY > 0 & DEP_TIME_BIN == "afternoon", .N] / dep_delay_per_dep_time[DEP_TIME_BIN == "afternoon", .N] 
+dep_delay_per_dep_time[DEP_DELAY > 0 & DEP_TIME_BIN == "night", .N] / dep_delay_per_dep_time[DEP_TIME_BIN == "night", .N] 
+
+
+#  
+
 
 # Now I'm going to get densities for each of the binned DEP_TIME
 ggplot(dep_delay_per_dep_time, aes(x = DEP_DELAY, color = DEP_TIME_BIN)) +
   geom_density() +
   scale_x_continuous(limits = c(1, 60))
 
-dep_delay_per_dep_time[, .N, by = DEP_TIME_BIN]
+dep_delay_per_dep_time[DEP_DELAY > 20][, .N, by = DEP_TIME_BIN]
+
+# jittered scatter of DEP_DELAY by DEP_TIME_BIN
+ggplot(dep_delay_per_dep_time, aes(x = DEP_DELAY, y = DEP_TIME_BIN)) +
+  geom_point(position = "jitter", alpha = .1)
 
 
 # Density plots using the flights_with_delays
@@ -355,6 +421,23 @@ flights_with_delays %>% filter(LATE_AIRCRAFT_DELAY > 1) %>%
   summarise("mean_delay_time" = mean(DEP_DELAY_NEW, na.rm = TRUE),
             "mean_late_aircraft" = mean(LATE_AIRCRAFT_DELAY))
 
+# jittered scatter of ARR_DELAY by DISTANCE GROUP
+ggplot(air, aes(x = ARR_DELAY, y = factor(DISTANCE_GROUP))) +
+  geom_point(position = "jitter", alpha = .1)
+
+# density plots of ARR_DELAY for each distance group
+ggplot(air, aes(x = ARR_DELAY, color = factor(DISTANCE_GROUP))) +
+  geom_density() +
+  scale_x_continuous(limits = c(-10, 50)) +
+  geom_vline(xintercept = mean(air[DISTANCE_GROUP == 11]$ARR_DELAY, na.rm = TRUE)) +
+  geom_vline(xintercept = mean(air[DISTANCE_GROUP == 11]$ARR_DELAY, na.rm = TRUE), color = "red")
+
+# scatter plot of ARR_DELAY by DISTANCE
+ggplot(air, aes(x = DISTANCE, y = ARR_DELAY, color = factor(DISTANCE_GROUP))) +
+  geom_point() 
+  
+
+
 ########### Let's do some time-series plots ###################################
 mean_delays_year <- air.spark %>%
           group_by(YEAR) %>%
@@ -376,23 +459,28 @@ ggplot(mean_delays_temporal, aes(x = YEAR)) +
   geom_line(aes(y = mean_dep_delay_new), color = "pink")
 
 
-# Find correlations of numeric variables and response
-corr_mat <- ml_corr(air.spark, c("YEAR", "MONTH", "DAY_OF_MONTH", "DAY_OF_WEEK",
-                     "DEP_DELAY", "DEP_DELAY_NEW", "DEP_DEL15", 
-                     "ARR_DELAY", "ARR_DELAY_NEW", "ARR_DEL15", 
-                     "CRS_ELAPSED_TIME", "ACTUAL_ELAPSED_TIME", 
-                     "DISTANCE"), method = "pearson")
-
+# Find correlation among numeric variables
 num_data <- air.spark %>% 
-  select(YEAR, MONTH, DAY_OF_MONTH, DAY_OF_WEEK, DEP_DELAY, DEP_DELAY_NEW, DEP_DEL15,
-         ARR_DELAY, ARR_DELAY_NEW, ARR_DEL15, CRS_ELAPSED_TIME, ACTUAL_ELAPSED_TIME, 
+  select(YEAR, MONTH, DAY_OF_MONTH, DAY_OF_WEEK, DEP_DELAY,
+         ARR_DELAY, CRS_ELAPSED_TIME, ACTUAL_ELAPSED_TIME, 
          DISTANCE) %>%
-  na.omit() 
+  na.omit() %>%
+  collect()
 
 
-x <- sapply(-cor_mat, order)
+cor_mat <- cor(num_data)
+cor_mat <- corReorder(cor_mat)
 
 
-cor_mat <- as.matrix(cor_mat)
-corReorder(cor_mat)
+# Now I want to find missing data information
+nas <- air.spark %>% 
+  mutate_all(is.na) %>%
+  mutate_all(as.numeric) %>%
+  summarise_all(sum) %>%
+  collect()
+
+
+nas <- as.data.table(nas)
+
+# 
 
