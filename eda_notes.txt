@@ -1,0 +1,58 @@
+Flights EDA notes
+
+Basic counts:
+US Air, United, Southwest, American, Delta make up 30% of all flights.
+
+Flights across year is approx symmetric
+
+Flights across month is approxsymmetric
+
+Flights across day of week is approx symmetric
+
+Flights across day of month is approx symmetric
+
+Flights per origin airport is skewed towards bigger airports; as expected
+
+Roughly 39% of flights are delayed in some capacity
+
+Roughly 19% of flights have no delay at all
+
+Roughly 39% of flights depart early
+
+Roughly 30% of flights had both DEP and ARR delay
+
+Roughly 75% of flights with arrival delays had departure delays
+
+
+
+Mean delay time by carrier is approx symmetric; especially among top 5 airlines; delta is lowest
+
+Flights tend to be delayed more frequently as the day goes on
+
+
+
+Distributions of variables
+DEP_DELAY is extremely right-skewed
+
+ARR_DELAY is extremely right skewed
+
+AIR_TIME is right-skewed 
+
+DISTANCE is right-skewed
+
+CRS_DEP_TIME is symmetric
+
+CRS_ELAPSED_TIME is right-skewed
+
+
+Possible predictors
+DEP_DELAY, DISTANCE_GROUP, DISTANCE, CRS_ELAPSED_TIME, CRS_DEP_TIME, ORIGIN, DEST,
+UNIQUE_CARRIER, 
+
+
+Predictor imputation needed
+DEP_DELAY CRS_ELAPSED_TIME
+
+
+
+
