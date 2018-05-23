@@ -3,6 +3,7 @@ library(dplyr)
 library(ggplot2)
 library(data.table)
 library(DBI)
+library(chron)
 library(lessR)
 
 # Load data into workspace
@@ -13,11 +14,11 @@ int_cols <- which(sapply(air, is.integer))
 num_cols <- which(sapply(air, is.numeric))
 
 # These are the columns that are numeric but not yet integer
-change_cols <- y[!(y %in% x)]
-change_cols <- names(cols)
+change_cols <- num_cols[!(num_cols %in% int_cols)]
+change_cols <- names(change_cols)
 
 # convert the numeric columns to integer
-air[, (cols) := lapply(.SD, as.integer), .SDcols = cols]
+air[, (change_cols) := lapply(.SD, as.integer), .SDcols = change_cols]
 
 
  # Create a spark connection locally
@@ -459,6 +460,60 @@ ggplot(mean_delays_temporal, aes(x = YEAR)) +
   geom_line(aes(y = mean_dep_delay_new), color = "pink")
 
 
+
+# group by month
+mean_delays_month <- air.spark %>%
+  group_by(MONTH) %>%
+  summarise("mean_dep_delay" = mean(DEP_DELAY, na.rm = TRUE),
+                "mean_arr_delay" = mean(ARR_DELAY, na.rm = TRUE)) %>%
+  collect()
+
+
+mean_delays_month <- as.data.table(mean_delays_month)
+
+# visualize
+ggplot(mean_delays_month, aes(x = MONTH)) +
+  geom_line(aes(y = mean_dep_delay)) +
+  geom_line(aes(y = mean_arr_delay), color = "red")
+
+
+air[YEAR == 2007]
+
+# Read in flights_2000 for more time series visualizations
+air_2000 <- fread("~/MyStuff/DataScience/BigData/data/AirOnTimeCSV/airOT200001.csv",
+                  header = TRUE, stringsAsFactors = FALSE, blank.lines.skip = TRUE)
+
+
+day_one <- air_2000[FL_DATE == '2000-01-01']
+
+times <- strsplit(air_2000[FL_DATE == '2000-01-01', CRS_ARR_TIME], "")
+
+time_format_function <- function(x) {
+  time <- paste(x[1], x[2], ":", x[3], x[4], sep = "")
+}
+
+day_one[, CRS_ARR_TIME := as.ITime(CRS_ARR_TIME)]
+day_one[, CRS_ARR_HOUR := substr(day_one[, CRS_ARR_TIME], start = 1, stop = 2)]
+day_one[, CRS_ARR_HOUR := as.numeric(CRS_ARR_HOUR)]
+
+mean_arr_delay_by_time <- day_one[, mean(ARR_DELAY, na.rm = TRUE), by = CRS_ARR_HOUR]
+mean_arr_delay_by_time <- mean_arr_delay_by_time[order(CRS_ARR_HOUR)]
+mean_arr_delay_by_time <- mean_arr_delay_by_time[, V1_Lag := c(V1[2:24], NA)]
+
+
+ggplot(day_one, aes(x = CRS_ARR_HOUR, y = ARR_DELAY, color = UNIQUE_CARRIER)) +
+  geom_smooth(se = FALSE)
+
+ggplot(mean_arr_delay_by_time, aes(x = CRS_ARR_HOUR, y = V1, color = UNIQUE_CARRIER)) +
+  geom_line()
+
+?scale_x_chron
+# redefine CRS_ARR_TIME with the newly formatted times
+day_one[, CRS_ARR_TIME := times]
+
+# change column type
+day_one[, CRS]
+
 # Find correlation among numeric variables
 num_data <- air.spark %>% 
   select(YEAR, MONTH, DAY_OF_MONTH, DAY_OF_WEEK, DEP_DELAY,
@@ -482,5 +537,5 @@ nas <- air.spark %>%
 
 nas <- as.data.table(nas)
 
-# 
+
 
