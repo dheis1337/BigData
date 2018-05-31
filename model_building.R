@@ -3,43 +3,45 @@ library(ggplot2)
 library(e1071)
 library(sparklyr)
 
-
-config <- spark_config()
-
-config$`sparklyr.shell.driver-memory` <- "4G"
-config$`sparklyr.shell.executor-memory` <- "4G"
-config$`spark.yarn.executor.memoryOverhead` <- "1G"
-
-sc <- spark_connect(master = "local")
-
-air <- fread("~/MyStuff/DataScience/BigData/data/AirOnTimeCSV/flightssamp.csv")
-
-air.spark <- copy_to(sc, air, "air")
-
-air.spark <- air.spark %>%
-  select(ARR_DELAY, DEP_DELAY, DAY_OF_WEEK, DISTANCE, DIVERTED, CRS_DEP_TIME) %>%
-  na.omit() 
+source("~/MyStuff/DataScience/BigData/flights_cleaning.R")
 
 
-
-# fit model
-fit <- air.spark %>%
-  ml_linear_regression(response = "ARR_DELAY", 
-                       features = c("DEP_DELAY", "DAY_OF_WEEK", "DISTANCE", 
-                                    "DIVERTED", "CRS_DEP_TIME"))
-
-preds <- sdf_predict(air.spark, fit) %>%
-  collect()
-
-resids <- sdf_residuals(fit) %>%
-  collect()
-
-err.dt <- data.table("fitted_vals" = preds, 
-                     "residuals" = resids)
+# basic fit
+lin.fit <- air.part$training %>%
+  select(YEAR, DAY_OF_WEEK, CRS_DEP_TIME, DEST, DEP_DELAY, CRS_DEP_TIME, ARR_DELAY, ORIGIN, UNIQUE_CARRIER, 
+         DISTANCE, DEP_DELAY_SQ, DEP_DELAY_CUBE) %>%
+  na.omit() %>%
+  ml_linear_regression(features = c("YEAR", "DAY_OF_WEEK", "DEP_DELAY", "CRS_DEP_TIME",
+                                    "DEST", "ORIGIN", "UNIQUE_CARRIER", "DISTANCE", "DEP_DELAY_SQ",
+                                    "DEP_DELAY_CUBE"), response = "ARR_DELAY")
 
 
-ggplot(err.dt, aes(x = fitted_vals.prediction, y = residuals.residuals)) +
-  geom_point(alpha = .1) +
-  scale_x_continuous(limits = c(-10, 100)) +
-  scale_y_continuous(limits = c(-50, 200))
+lasso.fit <- air.part$training %>%
+  select(YEAR, DAY_OF_WEEK, CRS_DEP_TIME, DEST, DEP_DELAY, CRS_DEP_TIME, ARR_DELAY, ORIGIN, UNIQUE_CARRIER, 
+         DISTANCE, DEP_DELAY_SQ, DEP_DELAY_CUBE) %>%
+  na.omit() %>%
+  ml_linear_regression(features = c("YEAR", "DAY_OF_WEEK", "DEP_DELAY", "CRS_DEP_TIME",
+                                    "DEST", "ORIGIN", "UNIQUE_CARRIER", "DISTANCE", "DEP_DELAY_SQ",
+                                    "DEP_DELAY_CUBE"), response = "ARR_DELAY", 
+                       alpha = 1, lambda = 1)
 
+ml_summary(lasso.fit)
+
+ridge.fit <- air.part$training %>%
+  select(YEAR, DAY_OF_WEEK, CRS_DEP_TIME, DEST, DEP_DELAY, CRS_DEP_TIME, ARR_DELAY, ORIGIN, UNIQUE_CARRIER, 
+         DISTANCE, DEP_DELAY_SQ, DEP_DELAY_CUBE) %>%
+  na.omit() %>%
+  ml_linear_regression(features = c("YEAR", "DAY_OF_WEEK", "DEP_DELAY", "CRS_DEP_TIME",
+                                    "DEST", "ORIGIN", "UNIQUE_CARRIER", "DISTANCE", "DEP_DELAY_SQ",
+                                    "DEP_DELAY_CUBE"), response = "ARR_DELAY",
+                       alpha = 0, lambda = 1)
+
+pipeline <- ml_pipeline(sc, uid = "test_pipe") %>%
+  ft_r_formula(ARR_DELAY ~ DEP_DELAY + YEAR + DAY_OF_WEEK, uid = "test_form") %>%
+  ml_linear_regression(uid = "test_lin", alpha = 1)
+
+test.cvm <- air.spark %>% ml_cross_validator(estimator = pipeline, 
+                                 estimator_param_maps = list("test_lin" = list(
+                                   "lambda" = c(.001, .01, .1, 1, 10, 100))),
+                                 evaluator = ml_regression_evaluator(sc))
+                                 
