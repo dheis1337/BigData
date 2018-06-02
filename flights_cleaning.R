@@ -82,6 +82,9 @@ air.spark %>% sdf_quantile("ARR_DELAY")
 air.spark <- air.spark %>% 
   filter(ARR_DELAY < 39)
 
+# one hot encode the DAY_OF_WEEK column
+air.spark <- air.spark %>% ft_one_hot_encoder(input_col = "DAY_OF_WEEK", output_col = "ONE_HOT_DOW")
+
 air.part <- air.spark %>%
   select(YEAR, MONTH, DAY_OF_MONTH, DAY_OF_WEEK, FL_DATE,
          UNIQUE_CARRIER, ORIGIN, DEST, CRS_DEP_TIME, DEP_DELAY_NEW,
@@ -89,13 +92,7 @@ air.part <- air.spark %>%
          AIR_TIME, DISTANCE, ARR_LATE_FLAG, ARR_EARLY_FLAG, DEP_LATE_FLAG,
          DEP_EARLY, ARR_EARLY, CRS_DEP_BUCKET_HOUR, CRS_DEP_BUCKET_TOD, 
          LOG_ARR_EARLY, LOG_DEP_EARLY, DEP_DELAY_NEW_LOG, ARR_DELAY_NEW_LOG,
-         DEP_DELAY_SQ, DEP_DELAY_CUBE, DEP_DELAY_QUAR) %>%
-  sdf_partition(training = .75, validation = .25)
-
-
-
-
-
-
+         DEP_DELAY_SQ, DEP_DELAY_CUBE, DEP_DELAY_QUAR, ONE_HOT_DOW) %>% 
+  sdf_partition(weights = weights, seed = 1)
 
 
