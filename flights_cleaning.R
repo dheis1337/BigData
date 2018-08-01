@@ -5,14 +5,25 @@ library(ggplot2)
 library(data.table)
 library(DBI)
 library(car)
+library(aws.s3)
 
-air <- fread("~/MyStuff/DataScience/BigData/data/AirOnTimeCSV/flightssamp.csv")
+buck <- getbucket(bucket = "bigdataprojectflight",
+                  key = "AKIAJIDBSOV7LLW2EZ4Q",
+                  secret = "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")
+
+dat <- getobject("flightssamp.csv", bucket = "bigdataprojectflight",
+          key = "AKIAJIDBSOV7LLW2EZ4Q",
+          secret = "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")
+  
+flight <- read.csv(text = rawToChar(dat))
+
+# air <- fread("~/MyStuff/DataScience/BigData/data/AirOnTimeCSV/flightssamp.csv")
 
 config <- spark_config()
 
 config$`sparklyr.shell.driver-memory` <- "5G"
-config$`sparklyr.shell.executor-memory` <- "5G"
-config$`spark.yarn.executor.memoryOverhead` <- "1G"
+config$`sparklyr.shell.executor-memory` <- "10G"
+config$`spark.yarn.executor.memoryOverhead` <- "G"
 
 sc <- spark_connect(master = "local", config = config)
 
@@ -85,6 +96,11 @@ air.spark <- air.spark %>%
 # one hot encode the DAY_OF_WEEK column
 air.spark <- air.spark %>% ft_one_hot_encoder(input_col = "DAY_OF_WEEK", output_col = "ONE_HOT_DOW")
 
+# Create interaction terms
+air.spark <- air.spark %>%
+  mutate(DEP_DELAY_DISTANCE = DEP_DELAY * DISTANCE) %>%
+  mutate(DEP_DELAY_ELAPSED_TIME = DEP_DELAY * CRS_ELAPSED_TIME)
+
 air.part <- air.spark %>%
   select(YEAR, MONTH, DAY_OF_MONTH, DAY_OF_WEEK, FL_DATE,
          UNIQUE_CARRIER, ORIGIN, DEST, CRS_DEP_TIME, DEP_DELAY_NEW,
@@ -92,7 +108,8 @@ air.part <- air.spark %>%
          AIR_TIME, DISTANCE, ARR_LATE_FLAG, ARR_EARLY_FLAG, DEP_LATE_FLAG,
          DEP_EARLY, ARR_EARLY, CRS_DEP_BUCKET_HOUR, CRS_DEP_BUCKET_TOD, 
          LOG_ARR_EARLY, LOG_DEP_EARLY, DEP_DELAY_NEW_LOG, ARR_DELAY_NEW_LOG,
-         DEP_DELAY_SQ, DEP_DELAY_CUBE, DEP_DELAY_QUAR, ONE_HOT_DOW) %>% 
-  sdf_partition(weights = weights, seed = 1)
-
+         DEP_DELAY_SQ, DEP_DELAY_CUBE, DEP_DELAY_QUAR, ONE_HOT_DOW,
+         DEP_DELAY_DISTANCE, DEP_DELAY_ELAPSED_TIME, DEP_DELAY_AIR_TIME, 
+         ELAPSED_TIME, DIVERTED) %>% 
+  sdf_partition(training = .75, validation = .25)
 
