@@ -8,12 +8,12 @@ library(car)
 library(aws.s3)
 
 buck <- getbucket(bucket = "bigdataprojectflight",
-                  key = "AKIAJIDBSOV7LLW2EZ4Q",
-                  secret = "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")
+                  key = "",
+                  secret = "")
 
 dat <- getobject("flightssamp.csv", bucket = "bigdataprojectflight",
-          key = "AKIAJIDBSOV7LLW2EZ4Q",
-          secret = "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")
+          key = "",
+          secret = "")
   
 flight <- read.csv(text = rawToChar(dat))
 
